@@ -30,18 +30,6 @@ resource "proxmox_vm_qemu" "k3s_master" {
   # Set the VM ID
   vmid        = var.start_vmid
 
-  provisioner "remote-exec" {
-    inline = [
-      "for i in {1..5}; do qm start ${self.vmid} && break || sleep 30; done"
-    ]
-    connection {
-      type     = "ssh"
-      user     = "root"
-      password = "your_proxmox_password"
-      host     = "proxmox_host_ip"
-    }
-  }
-
   lifecycle {
     create_before_destroy = true
   }
@@ -74,18 +62,6 @@ resource "proxmox_vm_qemu" "k3s_worker" {
 
   # Set the VM ID using the start_vmid variable and the count index
   vmid        = var.start_vmid + count.index + 1
-
-  provisioner "remote-exec" {
-    inline = [
-      "for i in {1..5}; do qm start ${self.vmid} && break || sleep 30; done"
-    ]
-    connection {
-      type     = "ssh"
-      user     = "root"
-      password = "your_proxmox_password"
-      host     = "proxmox_host_ip"
-    }
-  }
 
   lifecycle {
     create_before_destroy = true
