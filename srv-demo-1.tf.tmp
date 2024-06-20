@@ -1,0 +1,70 @@
+resource "null_resource" "delete_existing_vm" {
+  provisioner "local-exec" {
+    command = <<EOT
+      #!/bin/bash
+      headers="Authorization: PVEAPIToken=${var.proxmox_api_token_id}=${var.proxmox_api_token_secret}"
+      vm_data=$(curl -sk -H "$headers" ${var.proxmox_api_url}/api2/json/nodes/pmox2/qemu)
+      vm_id=$(echo $vm_data | jq -r '.data[] | select(.name=="srv-demo-1") | .vmid')
+      if [ ! -z "$vm_id" ]; then
+        # Stop the VM if it is running
+        vm_status=$(curl -sk -H "$headers" ${var.proxmox_api_url}/api2/json/nodes/pmox2/qemu/$vm_id/status/current | jq -r '.data.status')
+        if [ "$vm_status" == "running" ]; then
+          echo "Stopping VM $vm_id"
+          curl -sk -X POST -H "$headers" ${var.proxmox_api_url}/api2/json/nodes/pmox2/qemu/$vm_id/status/stop
+          sleep 10  # Wait for the VM to stop
+          # Recheck if the VM is still running
+          vm_status=$(curl -sk -H "$headers" ${var.proxmox_api_url}/api2/json/nodes/pmox2/qemu/$vm_id/status/current | jq -r '.data.status')
+          while [ "$vm_status" == "running" ]; do
+            echo "Waiting for VM $vm_id to stop"
+            sleep 5
+            vm_status=$(curl -sk -H "$headers" ${var.proxmox_api_url}/api2/json/nodes/pmox2/qemu/$vm_id/status/current | jq -r '.data.status')
+          done
+        fi
+        # Delete the VM
+        echo "Deleting VM $vm_id"
+        curl -sk -X DELETE -H "$headers" ${var.proxmox_api_url}/api2/json/nodes/pmox2/qemu/$vm_id
+        # Recheck if the VM is deleted
+        vm_exists=$(curl -sk -H "$headers" ${var.proxmox_api_url}/api2/json/nodes/pmox2/qemu/$vm_id | jq -r '.data | length')
+        while [ "$vm_exists" != "0" ]; do
+          echo "Waiting for VM $vm_id to be deleted"
+          sleep 5
+          vm_exists=$(curl -sk -H "$headers" ${var.proxmox_api_url}/api2/json/nodes/pmox2/qemu/$vm_id | jq -r '.data | length')
+        done
+      fi
+    EOT
+    interpreter = ["bash", "-c"]
+  }
+}
+
+resource "proxmox_vm_qemu" "name" {
+  name = "srv-demo-1"
+  desc = "Ubuntu Server"
+  vmid = "501"
+  target_node = "pmox2"
+
+  agent = 1
+
+  clone = "k8s-worker1"
+  cores = 2
+  sockets = 1
+  cpu = "host"
+  memory = 2048
+
+  network {
+    bridge = "vmbr0"
+    model = "virtio"
+  }
+
+  disk {
+    storage = "local"
+    type = "scsi"
+    size = "17G"
+  }
+
+  os_type = "cloud-init"
+  ipconfig0 = "ip=192.168.4.210/16,gw=192.168.4.1"
+  nameserver = "8.8.8.8"
+  ciuser = "k8s-admin"
+
+  depends_on = [null_resource.delete_existing_vm]
+}
