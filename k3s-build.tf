@@ -1,6 +1,8 @@
-# Variable for starting VM ID
-variable "start_vmid" {
-  default = 501
+# Create a delay null resource
+resource "null_resource" "delay" {
+  provisioner "local-exec" {
+    command = "sleep 60"  # Adjust the sleep duration as needed
+  }
 }
 
 # Create the k3s master node
@@ -33,9 +35,11 @@ resource "proxmox_vm_qemu" "k3s_master" {
   lifecycle {
     create_before_destroy = true
   }
+
+  depends_on = [null_resource.delay]
 }
 
-# Create the k3s worker nodes
+# Create the k3s worker nodes with delay
 resource "proxmox_vm_qemu" "k3s_worker" {
   count        = 3  # Adjust the count as needed
   name         = "k3s-worker-${count.index + 1}"
@@ -66,6 +70,8 @@ resource "proxmox_vm_qemu" "k3s_worker" {
   lifecycle {
     create_before_destroy = true
   }
+
+  depends_on = [null_resource.delay]
 }
 
 # Outputs for IP addresses
